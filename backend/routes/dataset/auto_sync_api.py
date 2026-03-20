@@ -259,11 +259,46 @@ def predict_latest(demo: Optional[str] = Query(None)):
     """
     # ── Demo mode ──
     if demo == "high":
-        demo_vals = [450, 0.92, 12, 4, 1, 1, 23]
-        return _build_prediction_response(demo_vals, is_demo=True)
+        # Hardcoded high-risk response for reliable demonstrations
+        return {
+            "risk": 0.87,
+            "risk_category": "High",
+            "confidence": 0.92,
+            "reason": "High code churn (450 lines) · Late night commit (hour 23) · Hotfix detected",
+            "top_insight": "High code churn (450 lines changed)",
+            "features": {
+                "code_churn": 450, "change_ratio": 0.92, "num_files": 12,
+                "msg_length": 4, "has_fix": 1, "is_weekend": 1, "commit_hour": 23
+            },
+            "suggestions": generate_suggestions([450, 0.92, 12, 4, 1, 1, 23], 0.87),
+            "shap_values": [
+                {"feature": "code_churn", "value": 450, "shap_value": 0.35},
+                {"feature": "commit_hour", "value": 23, "shap_value": 0.22},
+                {"feature": "has_fix", "value": 1, "shap_value": 0.15},
+                {"feature": "num_files", "value": 12, "shap_value": 0.10},
+                {"feature": "change_ratio", "value": 0.92, "shap_value": 0.05}
+            ],
+            "demo_mode": True
+        }
     if demo == "low":
-        demo_vals = [15, 0.55, 1, 55, 0, 0, 10]
-        return _build_prediction_response(demo_vals, is_demo=True)
+        return {
+            "risk": 0.08,
+            "risk_category": "Low",
+            "confidence": 0.95,
+            "reason": "All signals within normal range",
+            "top_insight": "Perfect commit hygiene",
+            "features": {
+                "code_churn": 15, "change_ratio": 0.55, "num_files": 1,
+                "msg_length": 55, "has_fix": 0, "is_weekend": 0, "commit_hour": 10
+            },
+            "suggestions": generate_suggestions([15, 0.55, 1, 55, 0, 0, 10], 0.08),
+            "shap_values": [
+                {"feature": "msg_length", "value": 55, "shap_value": -0.25},
+                {"feature": "code_churn", "value": 15, "shap_value": -0.15},
+                {"feature": "is_weekend", "value": 0, "shap_value": -0.10}
+            ],
+            "demo_mode": True
+        }
 
     # ── Normal prediction ──
     try:
