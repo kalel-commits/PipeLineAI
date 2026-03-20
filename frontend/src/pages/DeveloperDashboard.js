@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from "react";
+import { useLocation } from "react-router-dom";
 import axios from "axios";
 import {
   Box, Typography, Fade, Grow, CircularProgress, Card, CardContent,
@@ -20,6 +21,7 @@ import AutoGraphIcon from '@mui/icons-material/AutoGraph';
 const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
 
 export default function Dashboard() {
+  const location = useLocation();
   const [data, setData] = useState(null);
   const [stats, setStats] = useState(null);
   const [feedbackGiven, setFeedbackGiven] = useState(false);
@@ -29,7 +31,7 @@ export default function Dashboard() {
   const fetchAll = useCallback(async () => {
     try {
       const [predRes, statsRes] = await Promise.all([
-        axios.get(`${API}/predict/latest`).catch(() => null),
+        axios.get(`${API}/predict/latest${location.search}`).catch(() => null),
         axios.get(`${API}/training/stats`).catch(() => null),
       ]);
       if (predRes?.data) setData(predRes.data);
