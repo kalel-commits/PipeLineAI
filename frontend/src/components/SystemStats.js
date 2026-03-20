@@ -26,13 +26,14 @@ const SystemStats = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  const location = window.location; // Fallback since this is a component
   useEffect(() => {
     setLoading(true);
-    api.get('/admin/system-stats')
+    api.get(`/admin/system-stats${location.search}`)
       .then(res => setStats(res.data))
       .catch(err => setError(err.response?.data?.detail || 'Failed to load stats'))
       .finally(() => setLoading(false));
-  }, []);
+  }, [location.search]);
 
   if (loading) return <Box sx={{ py: 3, textAlign: 'center' }}><CircularProgress size={24} sx={{ color: 'var(--primary)' }} /></Box>;
   if (error) return <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>;

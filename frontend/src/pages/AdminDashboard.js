@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import api from '../services/api';
 import SystemStats from '../components/SystemStats';
 import AuditLogTable from '../components/AuditLogTable';
@@ -18,6 +19,7 @@ const PAGE_SIZE = 10;
 const roleColor = { Developer: 'primary', Analyst: 'success', Admin: 'warning' };
 
 const AdminDashboard = () => {
+  const location = useLocation();
   const [users, setUsers] = useState([]);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
@@ -29,7 +31,7 @@ const AdminDashboard = () => {
   const fetchUsers = async () => {
     setLoading(true); setError('');
     try {
-      const res = await api.get(`/admin/users?page=${page}&size=${PAGE_SIZE}`);
+      const res = await api.get(`/admin/users?page=${page}&size=${PAGE_SIZE}${location.search ? '&' + location.search.substring(1) : ''}`);
       setUsers(res.data.users || []);
       setTotal(res.data.total || 0);
     } catch (err) { setError(err.response?.data?.detail || 'Failed to load users'); }

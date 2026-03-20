@@ -41,9 +41,23 @@ class UserAdminResponse(BaseModel):
 def list_users(
     page: int = Query(1, ge=1),
     size: int = Query(10, ge=1, le=100),
+    demo: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     token_data=Depends(require_role("Admin"))
 ):
+    if demo == "high":
+        return {
+            "total": 1240,
+            "page": page,
+            "size": size,
+            "users": [
+                {"id": 1, "name": "Sarah Jenkins", "email": "s.jenkins@pipeline.ai", "role": "Admin", "is_active": True, "is_locked": False, "failed_login_attempts": 0, "created_at": "2026-01-01"},
+                {"id": 2, "name": "Marcus Chen", "email": "m.chen@dev.co", "role": "Developer", "is_active": True, "is_locked": False, "failed_login_attempts": 0, "created_at": "2026-02-15"},
+                {"id": 3, "name": "Elena Rodriguez", "email": "elena.r@ops.org", "role": "Analyst", "is_active": True, "is_locked": False, "failed_login_attempts": 0, "created_at": "2026-03-05"},
+                {"id": 4, "name": "System Bot", "email": "bot@pipeline.ai", "role": "Developer", "is_active": True, "is_locked": False, "failed_login_attempts": 0, "created_at": "2026-01-10"},
+                {"id": 5, "name": "Intruder Alert", "email": "unknown@hacker.io", "role": "Developer", "is_active": False, "is_locked": True, "failed_login_attempts": 5, "created_at": "2026-03-19"}
+            ]
+        }
     total = db.query(User).count()
     users = db.query(User).offset((page - 1) * size).limit(size).all()
     return {
@@ -118,9 +132,22 @@ def get_audit_logs(
     status: Optional[str] = Query(None),
     start: Optional[str] = Query(None),
     end: Optional[str] = Query(None),
+    demo: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     token_data=Depends(require_role("Admin"))
 ):
+    if demo == "high":
+        return {
+            "total": 15420,
+            "page": page,
+            "size": size,
+            "logs": [
+                {"id": 101, "user_name": "Sarah Jenkins", "role": "Admin", "action": "Retrained Fraud Model v4.2", "status": "success", "ip_address": "192.168.1.45", "timestamp": str(datetime.now())},
+                {"id": 102, "user_name": "System", "role": "System", "action": "Auto-scaled cluster: +3 nodes", "status": "success", "ip_address": "internal-vpc", "timestamp": str(datetime.now())},
+                {"id": 103, "user_name": "Marcus Chen", "role": "Developer", "action": "Configured Webhook: GitHub Main", "status": "success", "ip_address": "84.21.9.102", "timestamp": str(datetime.now())},
+                {"id": 104, "user_name": "System", "role": "System", "action": "Database Backup Completed", "status": "success", "ip_address": "s3-backup-service", "timestamp": str(datetime.now())}
+            ]
+        }
     query = db.query(AuditLog).outerjoin(User, AuditLog.user_id == User.id)
     if user:
         query = query.filter(User.name.ilike(f"%{user}%"))
@@ -261,7 +288,18 @@ def export_audit_logs(
 # --- System Stats ---
 
 @router.get("/system-stats")
-def system_stats(db: Session = Depends(get_db), token_data=Depends(require_role("Admin"))):
+def system_stats(demo: Optional[str] = Query(None), db: Session = Depends(get_db), token_data=Depends(require_role("Admin"))):
+    if demo == "high":
+        return {
+            "total_users": 1240,
+            "active_users": 1215,
+            "locked_accounts": 3,
+            "total_datasets": 45,
+            "processed_datasets": 42,
+            "total_models": 12,
+            "most_used_algorithm": "Random Forest (Best-Fit)",
+            "total_predictions": 15420
+        }
     total_users = db.query(User).count()
     active_users = db.query(User).filter(User.is_active == True).count()
     locked_accounts = db.query(User).filter(User.is_locked == True).count()

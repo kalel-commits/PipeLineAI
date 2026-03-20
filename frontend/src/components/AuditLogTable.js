@@ -39,10 +39,17 @@ const AuditLogTable = () => {
 
   useEffect(() => { fetchLogs(); }, [page]);
 
+  const location = window.location; 
   const fetchLogs = async () => {
     setLoading(true); setError('');
     try {
-      const params = { page, size: PAGE_SIZE, ...Object.fromEntries(Object.entries(filters).filter(([, v]) => v)) };
+      const demoParam = new URLSearchParams(location.search).get('demo');
+      const params = { 
+        page, 
+        size: PAGE_SIZE, 
+        ...Object.fromEntries(Object.entries(filters).filter(([, v]) => v)),
+        ...(demoParam ? { demo: demoParam } : {})
+      };
       const res = await api.get('/admin/audit-logs', { params });
       setLogs(res.data.logs || []);
       setTotal(res.data.total || 0);
