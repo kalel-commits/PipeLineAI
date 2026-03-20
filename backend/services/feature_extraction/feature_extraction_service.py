@@ -93,7 +93,9 @@ def correlate_features(commit_df: pd.DataFrame, pipeline_df: pd.DataFrame) -> pd
 
 
 def save_features(df: pd.DataFrame, dataset: Dataset) -> str:
-    features_path = dataset.file_path + ".features.csv"
+    base_dir = os.path.dirname(dataset.file_path)
+    base_name = os.path.basename(dataset.file_path)
+    features_path = os.path.join(base_dir, f"features_{base_name}").replace("\\", "/")
     df.to_csv(features_path, index=False)
     return features_path
 

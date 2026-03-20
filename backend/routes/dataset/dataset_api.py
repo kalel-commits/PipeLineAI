@@ -11,7 +11,8 @@ import os
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
 
-UPLOAD_DIR = os.getenv("UPLOAD_FOLDER", "./db/uploads")
+# Ensure absolute pathing for Render/Linux environments
+UPLOAD_DIR = os.path.abspath(os.getenv("UPLOAD_FOLDER", "./db/uploads")).replace("\\", "/")
 MAX_UPLOAD_SIZE_MB = int(os.getenv("MAX_UPLOAD_SIZE_MB", 10))
 
 
@@ -85,7 +86,10 @@ def preprocess_dataset(
         else:
             df = pd.read_json(dataset.file_path)
         cleaned_df = preprocess_data(df)
-        cleaned_path = dataset.file_path + ".cleaned.csv"
+        # Fix: Using os.path.join and normalizing slashes for cross-platform compatibility
+        base_dir = os.path.dirname(dataset.file_path)
+        base_name = os.path.basename(dataset.file_path)
+        cleaned_path = os.path.join(base_dir, f"cleaned_{base_name}").replace("\\", "/")
         cleaned_df.to_csv(cleaned_path, index=False)
         dataset.file_path = cleaned_path
         dataset.status = DatasetStatus.processed
