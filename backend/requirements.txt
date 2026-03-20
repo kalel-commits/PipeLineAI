@@ -14,3 +14,4 @@ PyPDF2
 reportlab
 shap
 numpy
+anthropic
