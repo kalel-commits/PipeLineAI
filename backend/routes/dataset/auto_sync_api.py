@@ -347,7 +347,8 @@ def predict_latest(demo: Optional[str] = Query(None)):
                 parse_hour(str(commit.get('date', ''))),
             ]
         else:
-            sample_vals = [300, 0.9, 5, 4, 1, 1, 23]
+            # Fallback to a healthy, low-risk baseline when no data is present
+            sample_vals = [20, 0.4, 2, 45, 0, 0, 14] 
 
         return _build_prediction_response(sample_vals)
 
