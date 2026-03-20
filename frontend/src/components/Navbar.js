@@ -5,9 +5,9 @@ import { AppBar, Toolbar, Typography, Box, Tooltip } from '@mui/material';
 import AutoGraphIcon from '@mui/icons-material/AutoGraph';
 
 const roles = [
-  { id: 'Developer', emoji: '🧑‍💻', color: '#4a9dae', bg: 'rgba(74,157,174,' }, // Teal
-  { id: 'Analyst', emoji: '📊', color: '#7dc2c3', bg: 'rgba(125,194,195,' }, // Light Teal
-  { id: 'Admin', emoji: '🛡️', color: '#f26f60', bg: 'rgba(242,111,96,' }, // Coral
+  { id: 'Developer', emoji: '🧑‍💻', color: '#1e5f74', bg: 'rgba(30,95,116,' }, // Deep Blue/Teak
+  { id: 'Analyst', emoji: '📊', color: '#3498db', bg: 'rgba(52,152,219,' }, // Sky Blue
+  { id: 'Admin', emoji: '🛡️', color: '#2d3748', bg: 'rgba(45,55,72,' }, // Navy
 ];
 
 const Navbar = () => {
@@ -26,16 +26,16 @@ const Navbar = () => {
       <Toolbar sx={{ minHeight: 60, px: { xs: 2, md: '2rem' }, maxWidth: 1200, width: '100%', mx: 'auto', gap: 2 }}>
 
         {/* Logo */}
-        <Box component={Link} to="/dashboard" sx={{ display: 'flex', alignItems: 'center', gap: 1.25, textDecoration: 'none', mr: 2, '&:hover': { opacity: 0.85 } }}>
+        <Box component={Link} to="/" sx={{ display: 'flex', alignItems: 'center', gap: 1.5, textDecoration: 'none', mr: 2, '&:hover': { opacity: 0.85 } }}>
           <Box sx={{
-            width: 34, height: 34, borderRadius: '10px', flexShrink: 0,
-            background: 'linear-gradient(135deg, #f26f60, #d95e50)',
+            width: 32, height: 32, borderRadius: '8px', flexShrink: 0,
+            background: 'linear-gradient(135deg, #3498db, #2c6e8f)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: '0 4px 14px rgba(242, 111, 96, 0.4)',
+            boxShadow: '0 4px 12px rgba(52, 152, 219, 0.25)',
           }}>
-            <AutoGraphIcon sx={{ fontSize: 20, color: '#fff' }} />
+            <AutoGraphIcon sx={{ fontSize: 18, color: '#fff' }} />
           </Box>
-          <Typography fontWeight={800} fontSize={18} color="#2D3748" sx={{ letterSpacing: '-0.02em' }}>
+          <Typography fontWeight={900} fontSize={18} color="#2d3748" sx={{ letterSpacing: '-0.04em' }}>
             PipelineAI
           </Typography>
         </Box>
@@ -46,8 +46,8 @@ const Navbar = () => {
         {/* Role segmented control */}
         <Box sx={{
           display: 'flex',
-          background: '#f9e2b4', // Cream background for toggle
-          border: '1px solid rgba(0,0,0,0.07)',
+          background: '#f5ede3', // Matching beige background
+          border: '1px solid rgba(0,0,0,0.05)',
           borderRadius: '12px',
           p: '4px',
           gap: '2px',

@@ -11,6 +11,14 @@ from collections import deque
 
 router = APIRouter()
 
+# Resolve path for persistence (Mirroring db.py)
+_BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_DB_PATH = os.path.join(_BASE_DIR, "db")
+os.makedirs(_DB_PATH, exist_ok=True)
+
+MODEL_PATH = os.path.join(_DB_PATH, "model.pkl")
+STATS_PATH = os.path.join(_DB_PATH, "training_stats.json")
+
 # ──────────────────────────────────────────────────────────────────
 # In-memory state
 # ──────────────────────────────────────────────────────────────────
@@ -212,8 +220,8 @@ def train_model(data):
             "last_trained_at": last_trained_at,
         }
 
-        pickle.dump(model, open("model.pkl", "wb"))
-        with open("training_stats.json", "w") as f:
+        pickle.dump(model, open(MODEL_PATH, "wb"))
+        with open(STATS_PATH, "w") as f:
             json.dump(training_stats, f)
 
         training_status["status"] = "done"
@@ -258,7 +266,7 @@ def predict_latest(demo: Optional[str] = Query(None)):
 
     # ── Normal prediction ──
     try:
-        loaded_model = pickle.load(open("model.pkl", "rb"))
+        loaded_model = pickle.load(open(MODEL_PATH, "rb"))
 
         if latest_commit_data:
             commit = latest_commit_data
@@ -287,7 +295,7 @@ def predict_latest(demo: Optional[str] = Query(None)):
 def _build_prediction_response(vals, is_demo=False):
     """Core prediction logic shared by normal + demo modes."""
     try:
-        loaded_model = pickle.load(open("model.pkl", "rb"))
+        loaded_model = pickle.load(open(MODEL_PATH, "rb"))
     except Exception:
         return {"risk": 0, "reason": "Model not ready", "risk_category": "Low"}
 
@@ -371,7 +379,7 @@ def _build_prediction_response(vals, is_demo=False):
 def get_training_stats():
     """Return training metrics and feature importances for the dashboard."""
     try:
-        with open("training_stats.json", "r") as f:
+        with open(STATS_PATH, "r") as f:
             return json.load(f)
     except Exception:
         return {"error": "No training stats available yet"}
