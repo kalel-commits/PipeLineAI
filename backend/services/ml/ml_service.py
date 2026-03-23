@@ -13,7 +13,9 @@ from models.ml.ml_model import MLAlgorithm, MLModel
 from models.dataset import Dataset
 from sqlalchemy.orm import Session
 from services.audit_log_service import log_action
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
+import random
+import json
 
 # Columns to always exclude from ML features (identifiers / strings / timestamps)
 _EXCLUDE_COLS = {"label", "pipeline_status", "commit_id", "developer_id", "commit_timestamp"}
@@ -203,6 +205,96 @@ def train_model(
     log_action(db, user_id, f"train_multi_models_dataset:{dataset.id}", ip)
     return trained_ml_models
 
+def generate_suggestions(input_data: dict, risk: float) -> list:
+    """
+    AI Mentor: Generates actionable advice based on feature values and risk levels.
+    """
+    suggestions = []
+    
+    churn = input_data.get("code_churn", 0)
+    files = input_data.get("num_files", 1)
+    
+    if churn > 150:
+        suggestions.append({
+            "icon": "🧠",
+            "title": "Complexity Alert",
+            "detail": f"This commit has a high change density ({int(churn)} lines). Large diffs are 3x more likely to harbor regressions. Consider breaking this into smaller, atomic pull requests."
+        })
+        
+    if input_data.get("commit_hour", 12) >= 22 or input_data.get("commit_hour", 12) <= 4:
+        suggestions.append({
+            "icon": "🌙",
+            "title": "Fatigue Monitoring",
+            "detail": "Late-night changes are associated with higher error rates. Ensure a peer review is conducted during daytime hours for this MR."
+        })
+        
+    if risk > 0.65 and files > 5:
+        suggestions.append({
+            "icon": "📂",
+            "title": "Wide Blast Radius",
+            "detail": f"Changing {int(files)} files simultaneously increases coupling risk. Verify that cross-module dependencies are properly tested."
+        })
+
+    if not suggestions:
+        if risk < 0.3:
+            suggestions.append({
+                "icon": "✅",
+                "title": "Great commit hygiene!",
+                "detail": "All signals look healthy. Keep up the disciplined workflow!",
+            })
+        else:
+            suggestions.append({
+                "icon": "💡",
+                "title": "Best Practice",
+                "detail": "Maintain small, focused changes to keep build stability high and review time low.",
+            })
+            
+    return suggestions
+
+def extract_features(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Transform raw commit/MR metadata into model-ready features.
+    Features: code_churn, change_ratio, num_files, msg_length, has_fix, is_weekend, commit_hour
+    """
+    feat_df = pd.DataFrame()
+    
+    # 1. Code Churn (lines added + lines removed)
+    if "additions" in df.columns and "deletions" in df.columns:
+        feat_df["code_churn"] = df["additions"] + df["deletions"]
+    else:
+        feat_df["code_churn"] = 0
+        
+    # 2. Change Ratio (deletions / total churn)
+    feat_df["change_ratio"] = df.apply(
+        lambda x: x["deletions"] / (x["additions"] + x["deletions"]) if (x["additions"] + x["deletions"]) > 0 else 0,
+        axis=1
+    )
+    
+    # 3. Number of files
+    feat_df["num_files"] = df.get("num_files", 1)
+    
+    # 4. Message Length (NLP Signal)
+    if "message" in df.columns:
+        feat_df["msg_length"] = df["message"].str.len()
+        # 5. Has Fix (Keyword search)
+        feat_df["has_fix"] = df["message"].str.contains("fix|bug|patch|issue", case=False).astype(int)
+    else:
+        feat_df["msg_length"] = 0
+        feat_df["has_fix"] = 0
+        
+    # 6. Time-based features
+    if "timestamp" in df.columns:
+        times = pd.to_datetime(df["timestamp"])
+        feat_df["is_weekend"] = (times.dt.dayofweek >= 5).astype(int)
+        feat_df["commit_hour"] = times.dt.hour
+    else:
+        now = datetime.utcnow()
+        feat_df["is_weekend"] = 1 if now.weekday() >= 5 else 0
+        feat_df["commit_hour"] = now.hour
+        
+    return feat_df
+
+
 def evaluate_model(db: Session, ml_model: MLModel) -> dict:
     model = joblib.load(ml_model.model_path)
     scaler = joblib.load(ml_model.model_path.replace(".joblib", "_scaler.joblib"))
@@ -218,53 +310,106 @@ def evaluate_model(db: Session, ml_model: MLModel) -> dict:
     return ml_model.metrics
 
 
+def generate_synthetic_features(demo_type: str = "high") -> dict:
+    """
+    Generate realistic feature vectors for demo mode.
+    Ensures that demo mode doesn't bypass the ML pipeline but instead uses realistic synthetic data.
+    """
+    if demo_type == "high":
+        return {
+            "code_churn": random.randint(350, 600),
+            "change_ratio": round(random.uniform(0.7, 0.95), 2),
+            "num_files": random.randint(8, 20),
+            "msg_length": random.randint(10, 30),
+            "has_fix": 1,
+            "is_weekend": random.choice([0, 1]),
+            "commit_hour": random.choice([23, 0, 1, 2, 3])
+        }
+    else:  # low risk
+        return {
+            "code_churn": random.randint(10, 50),
+            "change_ratio": round(random.uniform(0.3, 0.6), 2),
+            "num_files": random.randint(1, 3),
+            "msg_length": random.randint(50, 120),
+            "has_fix": 0,
+            "is_weekend": 0,
+            "commit_hour": random.randint(9, 17)
+        }
+
+
 def predict_model(ml_model: MLModel, input_data: dict) -> dict:
     model = joblib.load(ml_model.model_path)
     scaler = joblib.load(ml_model.model_path.replace(".joblib", "_scaler.joblib"))
 
     feature_names = (ml_model.metrics or {}).get("feature_names")
     if feature_names:
+        # Map input data to feature names, defaulting to 0 for missing fields
         values = [float(input_data.get(f, 0)) for f in feature_names]
     else:
         values = [float(v) for v in input_data.values()]
 
     X = np.array([values])
     X_scaled = scaler.transform(X)
-    pred = model.predict(X_scaled)[0]
-    prob = model.predict_proba(X_scaled)[0][1] if hasattr(model, "predict_proba") else None
+    
+    # Use predict_proba for continuous probability scores
+    prob = 0.5
+    if hasattr(model, "predict_proba"):
+        probs = model.predict_proba(X_scaled)[0]
+        # For binary classification, typically [P(0), P(1)]
+        prob = float(probs[1]) if len(probs) > 1 else float(probs[0])
+    else:
+        pred = model.predict(X_scaled)[0]
+        prob = 0.9 if int(pred) == 1 else 0.1
 
-    # Calculate local top risk factors
+    # Calculate local top risk factors using SHAP-like heuristic
     top_risk_factors = []
+    feature_names = (ml_model.metrics or {}).get("feature_names")
     if feature_names and ml_model.metrics:
         global_importances = {item["feature"]: item["importance"] for item in ml_model.metrics.get("feature_importances", [])}
         if global_importances:
-            # We use global importance * normalized feature value as a rough heuristic for local impact
             local_impacts = []
             for i, fname in enumerate(feature_names):
                 val = X_scaled[0][i]
                 imp = global_importances.get(fname, 0)
-                # Only care if it pushed the probability of failure up (positive value in scaled space * importance)
                 impact = max(0, val * imp)
-                local_impacts.append({"feature": fname, "impact": float(impact), "value": values[i]})
+                local_impacts.append({"feature": fname, "impact": float(impact), "value": values[i], "shap_value": float(val * imp)})
             
-            # Sort by impact and take top 3
-            local_impacts.sort(key=lambda x: x["impact"], reverse=True)
+            local_impacts.sort(key=lambda x: abs(x["shap_value"]), reverse=True)
             
-            # Normalize to percentages
-            total_impact = sum(x["impact"] for x in local_impacts)
+            total_impact = sum(abs(x["shap_value"]) for x in local_impacts)
             if total_impact > 0:
-                for item in local_impacts[:3]:
-                    if item["impact"] > 0:
-                        top_risk_factors.append({
-                            "feature": item["feature"],
-                            "contribution": round((item["impact"] / total_impact) * 100, 1),
-                            "value": item["value"]
-                        })
+                for item in local_impacts[:4]:
+                    top_risk_factors.append({
+                        "feature": item["feature"],
+                        "value": item["value"],
+                        "shap_value": item["shap_value"],
+                        "contribution": round((abs(item["shap_value"]) / total_impact) * 100, 1)
+                    })
+
+    # Extract dynamic reason based on feature values or top factor
+    reasons = []
+    if input_data.get("code_churn", 0) > 150:
+        reasons.append(f"High code churn ({int(input_data['code_churn'])} lines)")
+    if input_data.get("has_fix") == 1:
+        reasons.append("Risk keywords detected in message")
+    if input_data.get("commit_hour", 12) >= 22 or input_data.get("commit_hour", 12) <= 4:
+        reasons.append(f"Late night activity (hour {int(input_data['commit_hour'])})")
+    
+    if not reasons and top_risk_factors:
+        top = top_risk_factors[0]
+        reasons.append(f"High impact from {top['feature'].replace('_', ' ')}")
+        
+    reason = " · ".join(reasons) if reasons else "All signals within normal range"
 
     return {
-        "prediction": "Success" if int(pred) == 1 else "Failure",
-        "probability": float(prob) if prob is not None else None,
-        "top_risk_factors": top_risk_factors
+        "risk": prob,
+        "risk_category": "High" if prob > 0.65 else ("Medium" if prob > 0.35 else "Low"),
+        "confidence": round(abs(prob - 0.5) * 2, 3),
+        "reason": reason,
+        "features": input_data,
+        "shap_values": top_risk_factors,
+        "suggestions": generate_suggestions(input_data, prob),
+        "model_version": ml_model.version,
     }
 
 def compare_models(db: Session, dataset_id: int) -> list:

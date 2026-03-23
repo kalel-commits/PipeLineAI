@@ -1,17 +1,26 @@
-from fastapi import APIRouter, BackgroundTasks, Body, Query
+from fastapi import APIRouter, BackgroundTasks, Body, Query, Depends
 import os
 from typing import List, Any, Optional
 import pandas as pd
 import numpy as np
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import cross_val_score
-import pickle
 import json
 import anthropic
 from datetime import datetime
 from collections import deque
+from sqlalchemy.orm import Session
+from db import SessionLocal
+from models.ml.ml_model import MLModel
+from models.gitlab_prediction import GitLabPrediction
+from services.ml.ml_service import predict_model, generate_synthetic_features, extract_features
 
 router = APIRouter()
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 # Resolve path for persistence (Mirroring db.py)
 _BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -263,70 +272,72 @@ def get_training_status():
 
 
 @router.get("/predict/latest")
-def predict_latest(demo: Optional[str] = Query(None)):
+def predict_latest(demo: Optional[str] = Query(None), db: Session = Depends(get_db)):
     """
-    Predict risk for the latest commit.
-    Demo mode: ?demo=high or ?demo=low for reliable live demonstrations.
+    Predict risk for the latest commit using the active ML model.
+    Demo mode: ?demo=high or ?demo=low feeds realistic synthetic features through the real model.
     """
-    # ── Demo mode ──
-    if demo == "high":
-        # Hardcoded high-risk response for reliable demonstrations with PRE-CACHED Anthropic Insights
+    # 1. Fetch active model
+    active_model = db.query(MLModel).filter(MLModel.is_active == True).first()
+    if not active_model:
+        # Fallback if no model is trained
         return {
-            "risk": 0.87,
-            "risk_category": "High",
-            "confidence": 0.92,
-            "reason": "High code churn (450 lines) · Late night commit (hour 23) · Hotfix detected",
-            "top_insight": "High code churn (450 lines changed)",
-            "features": {
-                "code_churn": 450, "change_ratio": 0.92, "num_files": 12,
-                "msg_length": 4, "has_fix": 1, "is_weekend": 1, "commit_hour": 23
-            },
-            "suggestions": [
-                {
-                    "icon": "🧠",
-                    "title": "Anthropic Claude Insight",
-                    "detail": "This commit has a critical change density (450+ lines). Our analysis indicates a 3x higher regression probability. We recommend splitting this into atomic PRs."
-                },
-                {
-                    "icon": "🌱",
-                    "title": "Sustainability Alert",
-                    "detail": "By refactoring this risky logic before pushing, you avoid a high-compute failing build cycle, preventing ~0.4kg of CO2 emissions."
-                },
-                {
-                    "icon": "🌙",
-                    "title": "Risk Mitigation: Midnight Factor",
-                    "detail": "Fatigue-induced logic errors are likely at hour 23. Have a teammate in a different timezone review this before merging."
-                }
-            ],
-            "shap_values": [
-                {"feature": "code_churn", "value": 450, "shap_value": 0.35},
-                {"feature": "commit_hour", "value": 23, "shap_value": 0.22},
-                {"feature": "has_fix", "value": 1, "shap_value": 0.15},
-                {"feature": "num_files", "value": 12, "shap_value": 0.10},
-                {"feature": "change_ratio", "value": 0.92, "shap_value": 0.05}
-            ],
-            "demo_mode": True
+            "risk": 0.0,
+            "reason": "Awaiting first model training for real-time analysis",
+            "risk_category": "None"
         }
-    if demo == "low":
+
+    # 2. Prepare features (Synthetic for Demo, Real for Prod)
+    if demo in ["high", "low"]:
+        features = generate_synthetic_features(demo)
+    elif latest_commit_data:
+        # ── Extension/Sync Prediction ──
+        df_latest = pd.DataFrame([latest_commit_data])
+        features_df = extract_features(df_latest)
+        features = features_df.iloc[0].to_dict()
+    else:
+        # ── Fallback to latest GitLab MR Prediction ──
+        latest_git = db.query(GitLabPrediction).order_by(GitLabPrediction.created_at.desc()).first()
+        if latest_git:
+            # Helper to parse JSON safely
+            import json
+            def safe_parse(val, default):
+                try:
+                    return json.loads(val) if val else default
+                except Exception:
+                    return default
+
+            return {
+                "risk": latest_git.risk_score,
+                "risk_category": latest_git.risk_category,
+                "confidence": 0.85,
+                "reason": latest_git.explanation,
+                "top_insight": latest_git.risk_category + " Risk MR Detected",
+                "shap_values": safe_parse(latest_git.shap_json, []),
+                "suggestions": safe_parse(latest_git.suggestions_json, []),
+                "features": safe_parse(latest_git.features_json, {}),
+                "demo_mode": False,
+                "is_git_mr": True,
+                "mr_id": latest_git.mr_id
+            }
+            
         return {
-            "risk": 0.08,
-            "risk_category": "Low",
-            "confidence": 0.95,
-            "reason": "All signals within normal range",
-            "top_insight": "Perfect commit hygiene",
-            "features": {
-                "code_churn": 15, "change_ratio": 0.55, "num_files": 1,
-                "msg_length": 55, "has_fix": 0, "is_weekend": 0, "commit_hour": 10
-            },
-            "suggestions": [
-                {
-                    "icon": "✅",
-                    "title": "Elite Commit Hygiene",
-                    "detail": "Anthropic analysis confirms high message-to-code ratio and standard business hours. This is a high-quality, low-risk contribution."
-                }
-            ],
-            "demo_mode": True
+            "risk": 0.0,
+            "risk_category": "None",
+            "confidence": 1.0,
+            "reason": "Awaiting first commit for real-time analysis",
+            "top_insight": "System Idle",
+            "demo_mode": False
         }
+
+    # 3. Perform inference using unified ML service
+    prediction = predict_model(active_model, features)
+    
+    # 4. Enrich response with demo metadata if applicable
+    if demo:
+        prediction["demo_mode"] = True
+        
+    return prediction
 
     # ── Normal prediction ──
     try:
